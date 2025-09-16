@@ -5,7 +5,7 @@ import argparse
 from scipy.optimize import minimize
 from scipy.stats import norm
 
-# ----------------- ARGPARSE -----------------
+#----------------- ARGPARSE -----------------
 parser = argparse.ArgumentParser(description="Double Gaussian fit for PMTs")
 parser.add_argument("--chunk-id", type=int, required=True,
                     help="Index of the PMT chunk to process (0,1,2,...)")
@@ -19,7 +19,7 @@ start_idx = chunk_id * chunk_size
 end_idx   = start_idx + chunk_size
 print(f"Processing PMTs {start_idx} to {end_idx-1}")
 
-# ----------------- DIRECTORIES -----------------
+#----------------- DIRECTORIES -----------------
 signal_dir = "/scratch/elena/waveform_npz/run2521/"
 control_dir = "/scratch/elena/waveform_npz/run2519/"
 
@@ -30,7 +30,7 @@ signal_pmts = set(f.replace(".npz", "") for f in signal_files)
 control_pmts = set(f.replace(".npz", "") for f in control_files)
 pmts_both = sorted(list(signal_pmts & control_pmts))
 
-# ----------------- INTEGRATION -----------------
+#----------------- INTEGRATION -----------------
 pre_peak   = 4
 post_peak  = 1
 ped_window = 4
@@ -58,7 +58,7 @@ def compute_charges_signal(waveforms):
 def compute_charges_control(waveforms):
     return np.array([integrate_waveform_control(wf) for wf in waveforms])
 
-# ----------------- DOUBLE GAUSSIAN FIT -----------------
+#----------------- DOUBLE GAUSSIAN FIT -----------------
 def stable_nll(params, data):
     mu1, sigma1, mu2, sigma2, w = params
     if sigma1 <= 0 or sigma2 <= 0:
@@ -121,7 +121,7 @@ def fit_double_gauss_multistart(data, n_starts=12):
         wf = 1.0 - wf
     return {'mu1':mu1f,'sigma1':s1f,'mu2':mu2f,'sigma2':s2f,'w':wf}
 
-# ----------------- LOOP OVER PMTs -----------------
+#----------------- LOOP OVER PMTs -----------------
 results_list = []
 failed_pmts = []
 
@@ -157,7 +157,7 @@ for idx, pmt_label in enumerate(pmts_both[start_idx:end_idx], start=start_idx):
         failed_pmts.append((pmt_label, str(e)))
         continue
 
-# ----------------- SAVE RESULTS -----------------
+#----------------- SAVE RESULTS -----------------
 dtype = np.dtype([
     ('card_id','i4'),('slot_id','i4'),('channel_id','i4'),
     ('pedestal_mean','f8'),('pedestal_sigma','f8'),('N_pedestal','i4'),
