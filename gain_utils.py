@@ -38,7 +38,7 @@ def baseline_subtract(wf, n_baseline=10):
     baseline = np.mean(wf[:n_baseline])
     return wf - baseline
 
-def integrate_waveform_signal(wf, pre_peak=4, post_peak=1):
+def integrate_waveform_signal(wf, pre_peak=3, post_peak=2):
     peak_idx = np.argmax(wf)
     start = max(0, peak_idx - pre_peak)
     end   = min(len(wf), peak_idx + post_peak + 1)
