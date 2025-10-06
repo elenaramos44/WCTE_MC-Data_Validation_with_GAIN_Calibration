@@ -34,11 +34,11 @@ def load_led(folder, run, max_rows=None):
 
 
 
-def baseline_subtract(wf, n_baseline=10):
+def baseline_subtract(wf, n_baseline=10):   #this removes the electronic pedestal 
     baseline = np.mean(wf[:n_baseline])
     return wf - baseline
 
-def integrate_waveform_signal(wf, pre_peak=3, post_peak=2):
+def integrate_waveform_signal(wf, pre_peak=3, post_peak=2):  #INTEGRATION WINDOW! 
     peak_idx = np.argmax(wf)
     start = max(0, peak_idx - pre_peak)
     end   = min(len(wf), peak_idx + post_peak + 1)
@@ -162,7 +162,7 @@ def get_peak_timebins(waveform, threshold, card_id=None):
 def get_cfd(adcs):
     c = -2.0
     d = 2
-    baseline = (adcs[0] + adcs[1] + adcs[2]) / 3.0
+    baseline = (adcs[0] + adcs[1] + adcs[2]) / 3.0   #baseline calculated as the mean of the first 3 samples
     n_largest_vals = sorted(np.array(adcs)-baseline, reverse=True)[:3]
     amp = sum(n_largest_vals)
     data = [(adcs[i]-baseline) + c*(adcs[i-d]-baseline) for i in range(d, len(adcs))]
