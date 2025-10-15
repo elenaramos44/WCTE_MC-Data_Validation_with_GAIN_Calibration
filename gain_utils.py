@@ -38,7 +38,7 @@ def baseline_subtract(wf, n_baseline=10):   #this removes the electronic pedesta
     baseline = np.mean(wf[:n_baseline])
     return wf - baseline
 
-def integrate_waveform_signal(wf, pre_peak=3, post_peak=2):  #INTEGRATION WINDOW! 
+def integrate_waveform_signal(wf, pre_peak=2, post_peak=1):  #INTEGRATION WINDOW! 
     peak_idx = np.argmax(wf)
     start = max(0, peak_idx - pre_peak)
     end   = min(len(wf), peak_idx + post_peak + 1)
@@ -56,6 +56,21 @@ def compute_charges_signal(waveforms):
 
 def compute_charges_control(waveforms):
     return np.array([integrate_waveform_control(wf) for wf in waveforms])
+
+
+#----------------------------------------------------------------
+#for consistency!
+
+def charge_calculation_mPMT_method(wf,peak_sample):
+    #peak sample is the index of the peak in the waveform
+    #this is the value returned by pulse_finding.do_pulse_finding
+    charge = np.sum(wf[peak_sample-5:peak_sample+2])
+    if wf[peak_sample+2]>0:
+        charge+=wf[peak_sample+2]
+    return charge
+
+#-----------------------------------------------------------------
+
 
 def stable_nll(params, data):
     mu1, sigma1, mu2, sigma2, w = params

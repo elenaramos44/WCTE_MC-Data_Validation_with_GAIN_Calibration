@@ -3,8 +3,20 @@ import sys
 sys.path.append("/scratch/elena/WCTE_DATA_ANALYSIS/WCTE_MC-Data_Validation_with_GAIN_Calibration")
 import gain_utils as gu
 import numpy as np
+import matplotlib.pyplot as plt
+from scipy.stats import norm
 import os
 import argparse
+import glob
+import pandas as pd
+import pyarrow as pa
+from pyarrow.parquet import ParquetFile
+from pathlib import Path
+from tqdm import tqdm
+from scipy.optimize import minimize
+
+
+
 
 #----------------- ARGPARSE -----------------
 parser = argparse.ArgumentParser(description="Double Gaussian fit for PMTs (parquet)")
@@ -31,11 +43,11 @@ print(f"Processing PMTs {start_idx} to {end_idx-1}")
 df_wf = gu.load_waveforms(folder, run_number)
 df_led = gu.load_led(folder, run_number)
 
-#----------------- GET UNIQUE PMTS -----------------
+#----------------- UNIQUE PMTS -----------------
 pmts = df_wf[["card_id","chan"]].drop_duplicates().sort_values(["card_id","chan"]).to_numpy()
 pmts_chunk = pmts[start_idx:end_idx]
 
-#----------------- INTEGRATION THRESHOLD -----------------
+#----------------- INTEGRATION -----------------
 threshold = 10  # ADC counts
 
 results_list = []
@@ -43,39 +55,38 @@ failed_pmts = []
 
 for card_id, chan in pmts_chunk:
     try:
-        # Select waveforms for this PMT
         df_sel = df_wf[(df_wf['card_id'] == card_id) & (df_wf['chan'] == chan)]
         waveforms = np.stack(df_sel['samples'].to_numpy())
         waveforms_bs = np.array([gu.baseline_subtract(wf) for wf in waveforms])
 
-        # Compute CFD times for alignment
+        #compute CFD times for alignment
         cfd_times = np.array([gu.get_cfd(wf)[0] for wf in waveforms_bs])
         target_bin = 15
         cfd_bins = np.rint(cfd_times).astype(int)
 
-        # Align waveforms
+        #align waveforms
         aligned_wfs = np.zeros_like(waveforms_bs)
         for i, wf in enumerate(waveforms_bs):
             shift = target_bin - cfd_bins[i]
             aligned_wfs[i] = np.roll(wf, shift)
 
-        # Baseline-subtracted after alignment
+        #baseline-subtracted after alignment
         waveforms_bs = np.array([gu.baseline_subtract(wf) for wf in aligned_wfs])
 
-        # Compute integrated charges with threshold
+        # compute integrated charges with threshold
         signal_charges = np.array([
             gu.integrate_waveform_control(wf) if np.max(wf) <= threshold
-            else gu.integrate_waveform_signal(wf, pre_peak=3, post_peak=2)
+            else gu.integrate_waveform_signal(wf, pre_peak=2, post_peak=1)
             for wf in waveforms_bs
         ])
 
-        # Fit unbinned double Gaussian
+        #unbinned double Gaussian fit
         fit_results = gu.fit_double_gauss_multistart(signal_charges)
         mu1, sigma1 = fit_results["mu1"], fit_results["sigma1"]
         mu2, sigma2 = fit_results["mu2"], fit_results["sigma2"]
         w = fit_results["w"]
 
-        # Save results
+        #results
         results_list.append((
             int(card_id), int(chan),
             mu1, sigma1, len(signal_charges),

@@ -9,13 +9,24 @@
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=16G
 #SBATCH --time=24:00:00
-#SBATCH --array=0-16    # adjust based on total PMTs/100
+#SBATCH --array=0-1    # adjust based on total PMTs/100
 
-# Load environment
+
 source /scratch/elena/elena_wcsim/build/env_wcsim.sh
+
 
 source /scratch/elena/WCTE_DATA_ANALYSIS/WCTE_MC-Data_Validation_with_GAIN_Calibration/pyarrow_env/bin/activate
 
-# Run Python script with the array index as chunk-id
-python3 /scratch/elena/WCTE_DATA_ANALYSIS/WCTE_MC-Data_Validation_with_GAIN_Calibration/script_fit_LED.py \
-    --chunk-id ${SLURM_ARRAY_TASK_ID} --chunk-size 100
+#debug
+which python
+python -m site
+
+
+python /scratch/elena/WCTE_DATA_ANALYSIS/WCTE_MC-Data_Validation_with_GAIN_Calibration/script_fit_LED.py \
+    --chunk-id ${SLURM_ARRAY_TASK_ID} \
+    --chunk-size 100 \
+    --folder /dipc/elena/WCTE_2025_commissioning/parquet_files \
+    --run-number led_scan_calibration_20250404145411_hv_0_20250404145412_7
+
+
+
