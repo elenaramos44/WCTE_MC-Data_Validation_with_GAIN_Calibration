@@ -41,65 +41,120 @@ def compute_charges(waveforms):
     return np.array([integrate_waveform(wf) for wf in waveforms])
 
 #----------------- DOUBLE GAUSSIAN FIT -----------------
-def stable_nll(params, data):
+def nll_double_gauss(params, data):
     mu1, sigma1, mu2, sigma2, w = params
-    if sigma1 <= 0 or sigma2 <= 0:
-        return 1e300
-    w = float(np.clip(w, 1e-9, 1-1e-9))
-    lp1 = norm.logpdf(data, loc=mu1, scale=sigma1)
-    lp2 = norm.logpdf(data, loc=mu2, scale=sigma2)
-    return -np.sum(np.logaddexp(np.log(w)+lp1, np.log(1-w)+lp2))
+    if sigma1 <= 0 or sigma2 <= 0 or not (0 < w < 1):
+        return np.inf
+    pdf = w * norm.pdf(data, mu1, sigma1) + (1 - w) * norm.pdf(data, mu2, sigma2)
+    pdf = np.clip(pdf, 1e-12, None)  # avoid log(0)
+    return -np.sum(np.log(pdf))
 
-def fit_double_gauss_multistart(data, n_starts=12):
-    best = None
-    best_nll = np.inf
-    p10, p30, p50, p70, p90 = np.percentile(data, [10,30,50,70,90])
-    spe_candidates = data[(data>80) & (data<250)]
-    mu2_guess = np.median(spe_candidates) if len(spe_candidates) > 0 else p70
+
+def fit_double_gauss_unbinned(data, mu2_hint=None, n_starts=25, pmt_label="PMT"):
+    """
+    Robust unbinned double-Gaussian fit for charge distributions.
+    Automatically adapts to data range and avoids runaway SPE fits.
+    """
+    data = np.asarray(data)
+    if len(data) < 30:
+        raise RuntimeError("Muy pocos puntos para ajustar una doble gaussiana")
+
+    # --- Basic data descriptors ---
+    q16, q50, q84 = np.percentile(data, [16, 50, 84])
+    q90, q99 = np.percentile(data, [90, 99])
+    qmin, qmax = np.min(data), np.max(data)
+
+    # --- Pedestal estimate ---
+    ped_mask = data < q50
+    mu_ped_guess = np.mean(data[ped_mask]) if np.any(ped_mask) else np.mean(data)
+    sigma_ped_guess = np.std(data[ped_mask]) if np.any(ped_mask) else np.std(data)
+
+    # --- SPE initial guess ---
+    if mu2_hint is None:
+        mu2_hint = q90  # upper part of the distribution
+    sigma2_hint = max(10.0, (q99 - q90) / 2)
+
+    # --- Adaptive, physical bounds ---
+    bounds = [
+        (mu_ped_guess - 5 * sigma_ped_guess, mu_ped_guess + 5 * sigma_ped_guess),  # μ1
+        (0.1, max(5.0, sigma_ped_guess * 3)),                                      # σ1
+        (0.5 * mu2_hint, 1.5 * mu2_hint),                                          # μ2
+        (5.0, max(50.0, q99 - q16)),                                               # σ2
+        (0.05, 0.95)                                                               # w
+    ]
+
+    # --- Generate multi-start grid ---
+    mus1 = np.linspace(mu_ped_guess - 1, mu_ped_guess + 1, 3)
+    sigs1 = np.linspace(sigma_ped_guess * 0.5, sigma_ped_guess * 1.5, 3)
+    mus2 = np.linspace(mu2_hint - 100, mu2_hint + 100, 3)
+    sigs2 = np.linspace(sigma2_hint * 0.5, sigma2_hint * 1.5, 3)
+    ws = [0.1, 0.2, 0.3]
 
     init_list = []
-    mus1 = [0.0, p10, p30]
-    mus2 = [mu2_guess, p70, p90]
-    sigs = [3.0, 10.0, 20.0]
-    ws = [0.7, 0.8, 0.9]
     for mu1 in mus1:
-        for mu2 in mus2:
-            for s1 in sigs:
-                for s2 in sigs:
+        for s1 in sigs1:
+            for mu2 in mus2:
+                for s2 in sigs2:
                     for w in ws:
                         if mu1 < mu2:
-                            init_list.append([mu1,s1,mu2,s2,w])
-                        if len(init_list) >= n_starts: break
+                            init_list.append([mu1, s1, mu2, s2, w])
+                        if len(init_list) >= n_starts:
+                            break
                     if len(init_list) >= n_starts: break
                 if len(init_list) >= n_starts: break
             if len(init_list) >= n_starts: break
         if len(init_list) >= n_starts: break
 
-    rng = np.random.default_rng(12345)
-    while len(init_list) < n_starts:
-        mu1_r = float(rng.normal(0.0, 5.0))
-        mu2_r = float(rng.uniform(80, 250))
-        s1_r = float(rng.uniform(1.0, 15.0))
-        s2_r = float(rng.uniform(5.0, 40.0))
-        w_r = float(rng.uniform(0.5, 0.99))
-        init_list.append([mu1_r,s1_r,mu2_r,s2_r,w_r])
-
-    bounds = [(-50,50),(0.1,100),(80,250),(0.1,200),(1e-6,1-1e-6)]
+    # --- Optimization loop ---
+    best = None
+    best_nll = np.inf
     for p0 in init_list:
-        res = minimize(stable_nll, p0, args=(data,), method="L-BFGS-B", bounds=bounds)
-        if res.success and res.fun < best_nll:
-            best_nll = res.fun
-            best = res
+        try:
+            res = minimize(nll_double_gauss, p0, args=(data,),
+                           method="L-BFGS-B", bounds=bounds)
+            if res.success and res.fun < best_nll:
+                best = res
+                best_nll = res.fun
+        except Exception:
+            continue
 
     if best is None:
-        raise RuntimeError("No successful fit found.")
+        raise RuntimeError("No fit found (likely unphysical initial guesses)")
 
-    mu1f, s1f, mu2f, s2f, wf = best.x
-    if mu1f > mu2f:
-        mu1f, mu2f = mu2f, mu1f
-        s1f, s2f = s2f, s1f
-        wf = 1.0 - wf
-    return {'mu1':mu1f,'sigma1':s1f,'mu2':mu2f,'sigma2':s2f,'w':wf}
+    mu1, s1, mu2, s2, w = best.x
+
+    # --- Ensure ordering (μ1 < μ2) ---
+    if mu1 > mu2:
+        mu1, mu2 = mu2, mu1
+        s1, s2 = s2, s1
+        w = 1 - w
+
+    # --- Sanity check: reject runaway fits ---
+    qmin, qmax = np.min(data), np.max(data)
+    if mu2 > qmax * 1.5 or s2 > (qmax - qmin):
+        print(f"⚠️ Warning: SPE Gaussian escaped fit range — resetting to 1-Gaussian fit region.")
+        mu2, s2 = mu2_hint, sigma2_hint
+        w = 0.1
+
+    # --- Derived quantities ---
+    gain = mu2 - mu1
+    err_gain = np.sqrt(s1**2 + s2**2)
+    n_neg = np.sum(data < 0)
+
+    # --- Pretty print ---
+    print(f"----- Unbinned double Gaussian fit for {pmt_label} -----")
+    print(f"Pedestal (μ₁, σ₁) = ({mu1:.2f}, {s1:.2f}) ADC·ns")
+    print(f"SPE       (μ₂, σ₂) = ({mu2:.2f}, {s2:.2f}) ADC·ns")
+    print(f"Weight w = {w:.3f}")
+    print(f"Gain (μ₂ - μ₁) = {gain:.2f} ± {err_gain:.2f} ADC·ns")
+    print(f"Negative charges: {n_neg}/{len(data)} ({100*n_neg/len(data):.2f}%)")
+
+    return {
+        'mu1': mu1, 'sigma1': s1,
+        'mu2': mu2, 'sigma2': s2,
+        'w': w, 'gain': gain, 'err_gain': err_gain,
+        'nll': best_nll
+    }
 
 #----------------- LOOP OVER PMTs -----------------
 results_list = []
@@ -114,13 +169,11 @@ for idx, pmt_label in enumerate(pmts_all[start_idx:end_idx], start=start_idx):
         waveforms = load_waveforms(os.path.join(signal_dir, pmt_label + ".npz"))
         charges = compute_charges(waveforms)
 
-        fit = fit_double_gauss_multistart(charges, n_starts=15)
+        fit = fit_double_gauss_unbinned(charges, n_starts=25, pmt_label=pmt_label)
         mu1, s1 = fit['mu1'], fit['sigma1']
         mu2, s2 = fit['mu2'], fit['sigma2']
         w = fit['w']
-
-        gain = mu2 - mu1
-        err_gain = np.sqrt(s1**2 + s2**2)
+        gain, err_gain = fit['gain'], fit['err_gain']
 
         results_list.append((
             card_id, slot_id, channel_id,
@@ -145,7 +198,7 @@ dtype = np.dtype([
 ])
 
 results_array = np.array(results_list, dtype=dtype)
-npz_file_out = f"/scratch/elena/WCTE_DATA_ANALYSIS/WCTE_MC-Data_Validation_with_GAIN_Calibration/NEW_doubleGauss_830ns_{chunk_id}.npz"
+npz_file_out = f"/scratch/elena/WCTE_DATA_ANALYSIS/WCTE_MC-Data_Validation_with_GAIN_Calibration/NEW_doubleGauss_run2309_{chunk_id}.npz"
 np.savez(npz_file_out, results=results_array)
 
 if not failed_pmts:
