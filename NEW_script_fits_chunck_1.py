@@ -20,7 +20,7 @@ end_idx   = start_idx + chunk_size
 print(f"Processing PMTs {start_idx} to {end_idx-1}")
 
 #----------------- DIRECTORIES -----------------
-signal_dir = "/scratch/elena/WCTE_DATA_ANALYSIS/waveform_npz/run2307"
+signal_dir = "/scratch/elena/WCTE_DATA_ANALYSIS/waveform_npz/run2308"
 
 # List all available PMTs
 signal_files = [f for f in os.listdir(signal_dir) if f.endswith(".npz")]
@@ -198,7 +198,7 @@ dtype = np.dtype([
 ])
 
 results_array = np.array(results_list, dtype=dtype)
-npz_file_out = f"/scratch/elena/WCTE_DATA_ANALYSIS/WCTE_MC-Data_Validation_with_GAIN_Calibration/NEW_doubleGauss_run2307_{chunk_id}.npz"
+npz_file_out = f"/scratch/elena/WCTE_DATA_ANALYSIS/WCTE_MC-Data_Validation_with_GAIN_Calibration/NEW_doubleGauss_run2308_{chunk_id}.npz"
 np.savez(npz_file_out, results=results_array)
 
 if not failed_pmts:
