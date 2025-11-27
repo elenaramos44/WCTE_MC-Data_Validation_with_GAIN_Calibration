@@ -21,7 +21,7 @@ pmts_all = sorted([f.replace(".npz", "") for f in signal_files])
 start_idx = chunk_id * chunk_size
 end_idx = min(start_idx + chunk_size, len(pmts_all))
 
-# ----------------- HELPER FUNCTIONS -----------------
+# ----------------- WCTE FUNCTIONS -----------------
 def do_pulse_finding(waveform):
     threshold = 20
     fIntegralPreceding = 4
@@ -61,6 +61,7 @@ def charge_calculation_mPMT_method(wf, peak_sample):
         charge += wf[peak_sample + 2]
     return charge
 
+# -----------------------------------------------------------------
 
 def nll_gauss(params, data):
     mu, sigma = params
@@ -96,7 +97,7 @@ def fit_gaussian_with_bounds(data, mu0, sigma0, sigma_bounds):
 
 
 # ---------------------------------------------------------
-#   Main function
+#   FIT STEP 1 - find peaks using KDE with OPTION A
 # ---------------------------------------------------------
 def fit_pedestal_and_spe(charges, label="PMT"):
 
@@ -112,25 +113,42 @@ def fit_pedestal_and_spe(charges, label="PMT"):
     if len(peak_idx) < 2:
         raise RuntimeError("Only one peak found — cannot separate pedestal and SPE")
 
-    idx_sorted = peak_idx[np.argsort(ys[peak_idx])][-2:]
-    idx_sorted = np.sort(idx_sorted)
+    # ---- OPTION A: prefer peak in expected SPE range ----
+    expected_spe_min = 100.0   # ADC·ns, adjust if needed
+    expected_spe_max = 200.0   # ADC·ns, adjust if needed
 
-    ped_center = xs[idx_sorted[0]]
-    spe_center = xs[idx_sorted[1]]
+    peak_xs = xs[peak_idx]
+    peak_ys = ys[peak_idx]
 
+    spe_candidates_mask = (peak_xs >= expected_spe_min) & (peak_xs <= expected_spe_max)
+    spe_candidates_idx = np.where(spe_candidates_mask)[0]
+
+    if len(spe_candidates_idx) >= 1:
+        chosen_spe_rel = spe_candidates_idx[np.argmax(peak_ys[spe_candidates_idx])]
+        spe_center = peak_xs[chosen_spe_rel]
+        other_idx = [i for i in range(len(peak_xs)) if i != chosen_spe_rel]
+        if len(other_idx) == 0:
+            raise RuntimeError("Could not identify pedestal peak after SPE selection.")
+        ped_center = peak_xs[other_idx[np.argmin(peak_xs[other_idx])]]
+    else:
+        # fallback: two strongest peaks
+        idx_sorted = peak_idx[np.argsort(ys[peak_idx])][-2:]
+        idx_sorted = np.sort(idx_sorted)
+        ped_center = xs[idx_sorted[0]]
+        spe_center = xs[idx_sorted[1]]
+
+    # pedestal window
     ped_mask = np.abs(x - ped_center) < 6
     if ped_mask.sum() < 20:
         ped_mask = np.abs(x - ped_center) < 10
-
     ped_data = x[ped_mask]
 
+    # SPE window
     sep = abs(spe_center - ped_center)
     spe_hw = max(40, 0.35 * sep)
-
     spe_mask = np.abs(x - spe_center) < spe_hw
     if spe_mask.sum() < 30:
         spe_mask = np.abs(x - spe_center) < (1.6 * spe_hw)
-
     spe_data = x[spe_mask]
 
     if len(spe_data) < 20:
@@ -164,27 +182,23 @@ def fit_pedestal_and_spe(charges, label="PMT"):
 
     return result
 
-
 # -------------------------------
-# Gaussian function
+# FIT STEP 2 remains unchanged
 # -------------------------------
 def gaussian(x, A, mu, sigma):
     return A * np.exp(-(x - mu)**2 / (2 * sigma**2))
 
-
-# -------------------------------
-# Fit two Gaussians (pedestal + SPE)
-# -------------------------------
 def fit_and_get_gaussians(charges, seeds, bins=500):
     x = np.asarray(charges)
 
     counts, bin_edges = np.histogram(x, bins=bins)
     bin_centers = 0.5*(bin_edges[1:] + bin_edges[:-1])
 
-    # pedestal
+    # ------------------ Pedestal fit ------------------
     mu_seed = seeds['pedestal']['mu']
     sigma_seed = seeds['pedestal']['sigma']
     n_seed  = seeds['pedestal']['n']
+
     ped_mask = (bin_centers >= mu_seed - 3*sigma_seed) & (bin_centers <= mu_seed + 3*sigma_seed)
     x_fit_ped = bin_centers[ped_mask]
     y_fit_ped = counts[ped_mask]
@@ -194,10 +208,11 @@ def fit_and_get_gaussians(charges, seeds, bins=500):
     params_ped, _ = curve_fit(gaussian, x_fit_ped, y_fit_ped, p0=p0_ped, bounds=bounds_ped, maxfev=20000)
     A_ped, mu_ped, sigma_ped = params_ped
 
-    # SPE
+    # ------------------ SPE fit ------------------
     mu_spe_seed = seeds['spe']['mu']
     sigma_spe_seed = seeds['spe']['sigma']
     n_spe_seed = seeds['spe']['n']
+
     spe_mask = (bin_centers >= mu_spe_seed - 2*sigma_spe_seed) & (bin_centers <= mu_spe_seed + 2*sigma_spe_seed)
     x_fit_spe = bin_centers[spe_mask]
     y_fit_spe = counts[spe_mask]
@@ -207,11 +222,13 @@ def fit_and_get_gaussians(charges, seeds, bins=500):
     params_spe, _ = curve_fit(gaussian, x_fit_spe, y_fit_spe, p0=p0_spe, bounds=bounds_spe, maxfev=20000)
     A_spe, mu_spe, sigma_spe = params_spe
 
+    # ------------------ Gain and errors ------------------
     gain = mu_spe - mu_ped
     N_ped = len(x[(x >= mu_seed - 3*sigma_seed) & (x <= mu_seed + 3*sigma_seed)])
     N_spe = len(x[(x >= mu_spe_seed - 2*sigma_spe_seed) & (x <= mu_spe_seed + 2*sigma_spe_seed)])
     err_gain = np.sqrt(sigma_ped**2 / N_ped + sigma_spe**2 / N_spe)
 
+    # ------------------ χ² / ndof SPE ------------------
     chi2_spe = np.sum((y_fit_spe - gaussian(x_fit_spe, *params_spe))**2 / (y_fit_spe + 1))
     ndof_spe = len(y_fit_spe) - 3
     chi2ndof_spe = chi2_spe / ndof_spe if ndof_spe > 0 else np.nan
@@ -279,6 +296,6 @@ dtype = np.dtype([
 results_array = np.array(results_list, dtype=dtype)
 out_dir = "/scratch/elena/WCTE_DATA_ANALYSIS/WCTE_MC-Data_Validation_with_GAIN_Calibration"
 os.makedirs(out_dir, exist_ok=True)
-np.savez(os.path.join(out_dir, f"twoStepfit_run2307_chunk{chunk_id}.npz"), results=results_array)
+np.savez(os.path.join(out_dir, f"twoStepfit_run2307_v2_chunk{chunk_id}.npz"), results=results_array)
 
 print(f"Done. Processed PMTs {start_idx}..{end_idx-1}. Failed PMTs: {len(failed_pmts)}")
