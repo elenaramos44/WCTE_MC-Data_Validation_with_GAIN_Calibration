@@ -233,6 +233,7 @@ def fit_and_get_gaussians(charges, seeds, bins=500):
     ndof_spe = len(y_fit_spe) - 3
     chi2ndof_spe = chi2_spe / ndof_spe if ndof_spe > 0 else np.nan
 
+
     return dict(
         pedestal=(mu_ped, sigma_ped, A_ped),
         spe=(mu_spe, sigma_spe, A_spe),
@@ -277,7 +278,7 @@ for idx, pmt_label in enumerate(pmts_all[start_idx:end_idx], start=start_idx):
             results['spe'][0], results['spe'][1], seeds['n_spe'],
             results['gain'][0], results['gain'][1],
             pulse_ratio, mu_pe,
-            results['chi2_spe'], results['chi2ndof_spe']
+            results['chi2ndof_spe']
         ))
 
     except Exception as e:
@@ -291,7 +292,7 @@ dtype = np.dtype([
     ('spe_mean','f8'),('spe_sigma','f8'),('N_spe','i4'),
     ('gain','f8'),('gain_error','f8'),
     ('pulse_ratio','f8'),('mu_pe','f8'),
-    ('spe_chi2','f8'),('spe_chi2_ndof','f8')
+    ('chi2ndof_spe','f8')
 ])
 results_array = np.array(results_list, dtype=dtype)
 out_dir = "/scratch/elena/WCTE_DATA_ANALYSIS/WCTE_MC-Data_Validation_with_GAIN_Calibration"
