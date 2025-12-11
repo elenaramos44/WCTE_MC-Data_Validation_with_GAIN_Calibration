@@ -1,0 +1,27 @@
+#!/bin/bash
+#SBATCH --qos=regular
+#SBATCH --job-name=wf_part0
+#SBATCH --output=wf_part0_%A_%a.out
+#SBATCH --error=wf_part0_%A_%a.err
+#SBATCH --partition=general
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=8
+#SBATCH --mem=32G
+#SBATCH --time=24:00:00
+#SBATCH --array=0-70   # 71 chunks for part0 (17784 events / 250 chunk size ≈ 71)
+
+module purge
+module load foss/2019b
+module load Python/3.7.4-GCCcore-8.3.0
+source /scratch/elena/elena_wcsim/build/env_wcsim.sh
+export PYTHONPATH=/scratch/$USER/python-libs:$PYTHONPATH
+
+CHUNK_SIZE=250   # adjust as needed to avoid OOM
+
+python3 /scratch/elena/WCTE_DATA_ANALYSIS/WCTE_MC-Data_Validation_with_GAIN_Calibration/save_pmt_waveforms.py \
+    --run 2307 \
+    --part 0 \
+    --chunk-id $SLURM_ARRAY_TASK_ID \
+    --chunk-size $CHUNK_SIZE \
+    --outdir /scratch/elena/WCTE_DATA_ANALYSIS/waveform_npz/run2307/waveforms_including_position
