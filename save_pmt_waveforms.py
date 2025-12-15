@@ -25,7 +25,8 @@ def load_file_chunk(run_number, part, chunk_id, chunk_size, tree_name="WCTEReado
             "pmt_waveforms",
             "pmt_waveform_mpmt_card_ids",
             "pmt_waveform_mpmt_slot_ids",
-            "pmt_waveform_pmt_channel_ids"
+            "pmt_waveform_pmt_channel_ids",
+            "pmt_waveform_pmt_position_ids"
         ], library="ak", entry_start=start, entry_stop=stop)
 
     return arrays
@@ -40,16 +41,17 @@ def process_chunk(arrays, part):
     card_ids = arrays["pmt_waveform_mpmt_card_ids"]
     slot_ids = arrays["pmt_waveform_mpmt_slot_ids"]
     channel_ids = arrays["pmt_waveform_pmt_channel_ids"]
+    position_ids = arrays["pmt_waveform_pmt_position_ids"]
 
-    for event_wfs, event_cids, event_sids, event_chids in zip(
-        waveforms, card_ids, slot_ids, channel_ids
+    for event_wfs, event_cids, event_sids, event_chids, event_pids in zip(
+        waveforms, card_ids, slot_ids, channel_ids, position_ids
     ):
-        for wf, cid, sid, chid in zip(event_wfs, event_cids, event_sids, event_chids):
+        for wf, cid, sid, chid, pid in zip(event_wfs, event_cids, event_sids, event_chids, event_pids):
             if sid == -1 or cid > 120:
                 continue
 
             # Use part number in the key
-            pmt_key = (int(cid), int(sid), int(chid), int(part))
+            pmt_key = (int(cid), int(sid), int(chid), int(pid), int(part))
 
             wf_np = np.array(wf)
             if wf_np.size == 0:
@@ -69,8 +71,8 @@ def process_chunk(arrays, part):
 # -------------------------------------------------------------------
 def save_output(output_dir, chunk_id, waveforms_per_pmt):
     os.makedirs(output_dir, exist_ok=True)
-    for (cid, sid, chid, part), wfs in waveforms_per_pmt.items():
-        outname = f"card{cid}_slot{sid}_ch{chid}_part{part}_chunk{chunk_id}.npz"
+    for (cid, sid, chid, pid, part), wfs in waveforms_per_pmt.items():
+        outname = f"card{cid}_slot{sid}_ch{chid}_pos{pid}_part{part}_chunk{chunk_id}.npz"
         outpath = os.path.join(output_dir, outname)
         np.savez_compressed(outpath, waveforms=np.array(wfs))
 

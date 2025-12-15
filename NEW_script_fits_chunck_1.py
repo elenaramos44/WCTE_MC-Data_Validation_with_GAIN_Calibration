@@ -15,8 +15,13 @@ chunk_id = args.chunk_id
 chunk_size = args.chunk_size
 
 # ----------------- DIRECTORIES -----------------
-signal_dir = "/scratch/elena/WCTE_DATA_ANALYSIS/waveform_npz/run2307"
-signal_files = [f for f in os.listdir(signal_dir) if f.endswith(".npz")]
+signal_dir = "/scratch/elena/WCTE_DATA_ANALYSIS/waveform_npz/run2307/waveforms_including_position/run2306"
+
+signal_files = [
+    f for f in os.listdir(signal_dir)
+    if f.endswith("_combined.npz")
+]
+
 pmts_all = sorted([f.replace(".npz", "") for f in signal_files])
 start_idx = chunk_id * chunk_size
 end_idx = min(start_idx + chunk_size, len(pmts_all))
@@ -102,7 +107,7 @@ def fit_gaussian_with_bounds(data, mu0, sigma0, sigma_bounds):
 def fit_pedestal_and_spe(charges, label="PMT"):
 
     x = np.asarray(charges)
-    if len(x) < 80:
+    if len(x) < 20:
         raise RuntimeError("Too few points to identify pedestal + SPE peaks reliably")
 
     xs = np.linspace(np.min(x), np.max(x), 2500)
@@ -249,9 +254,13 @@ failed_pmts = []
 
 for idx, pmt_label in enumerate(pmts_all[start_idx:end_idx], start=start_idx):
     try:
-        card_id = int(pmt_label.split("_")[0][4:])
-        slot_id = int(pmt_label.split("_")[1][4:])
-        channel_id = int(pmt_label.split("_")[2][2:])
+        parts = pmt_label.split("_")
+
+        card_id    = int(parts[0].replace("card", ""))
+        slot_id    = int(parts[1].replace("slot", ""))
+        channel_id = int(parts[2].replace("ch", ""))
+        pos_id     = int(parts[3].replace("pos", ""))
+
         signal_npz = os.path.join(signal_dir, pmt_label + ".npz")
         data = np.load(signal_npz)
         signal_waveforms = data["waveforms"]
@@ -273,7 +282,7 @@ for idx, pmt_label in enumerate(pmts_all[start_idx:end_idx], start=start_idx):
         results = fit_and_get_gaussians(charges, seeds, bins=500)
 
         results_list.append((
-            card_id, slot_id, channel_id,
+            card_id, slot_id, channel_id, pos_id,
             results['pedestal'][0], results['pedestal'][1], seeds['n_ped'],
             results['spe'][0], results['spe'][1], seeds['n_spe'],
             results['gain'][0], results['gain'][1],
@@ -287,7 +296,7 @@ for idx, pmt_label in enumerate(pmts_all[start_idx:end_idx], start=start_idx):
 
 # ----------------- SAVE RESULTS -----------------
 dtype = np.dtype([
-    ('card_id','i4'),('slot_id','i4'),('channel_id','i4'),
+    ('card_id','i4'),('slot_id','i4'),('channel_id','i4'), ('pos_id','i4'),
     ('pedestal_mean','f8'),('pedestal_sigma','f8'),('N_pedestal','i4'),
     ('spe_mean','f8'),('spe_sigma','f8'),('N_spe','i4'),
     ('gain','f8'),('gain_error','f8'),
@@ -297,6 +306,6 @@ dtype = np.dtype([
 results_array = np.array(results_list, dtype=dtype)
 out_dir = "/scratch/elena/WCTE_DATA_ANALYSIS/WCTE_MC-Data_Validation_with_GAIN_Calibration"
 os.makedirs(out_dir, exist_ok=True)
-np.savez(os.path.join(out_dir, f"twoStepfit_run2307_v2_chunk{chunk_id}.npz"), results=results_array)
+np.savez(os.path.join(out_dir, f"High_statistics_run2307_chunk{chunk_id}.npz"), results=results_array)
 
 print(f"Done. Processed PMTs {start_idx}..{end_idx-1}. Failed PMTs: {len(failed_pmts)}")

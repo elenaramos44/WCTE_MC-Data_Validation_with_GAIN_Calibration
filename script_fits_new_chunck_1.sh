@@ -1,8 +1,8 @@
 #!/bin/bash
 #SBATCH --qos=regular
-#SBATCH --job-name=pmt_doubleGauss
-#SBATCH --output=pmt_doubleGauss_%A_%a.out
-#SBATCH --error=pmt_doubleGauss_%A_%a.err
+#SBATCH --job-name=twoStepfit
+#SBATCH --output=twoStepfit_%A_%a.out
+#SBATCH --error=twoStepfit_%A_%a.err
 #SBATCH --partition=general
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
