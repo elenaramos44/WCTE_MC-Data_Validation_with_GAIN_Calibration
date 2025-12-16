@@ -2,12 +2,15 @@
 import os
 import numpy as np
 import argparse
+import fnmatch
 from scipy.stats import norm, gaussian_kde
 from scipy.optimize import minimize, curve_fit
 from scipy.signal import argrelextrema
 
 # ----------------- ARGPARSE -----------------
 parser = argparse.ArgumentParser(description="Two-step Gaussian fit for PMTs (batch mode)")
+parser.add_argument("--pattern", type=str, default="*_merge.npz",
+                    help="Pattern to select PMT files, e.g., '*part0_combined.npz'")
 parser.add_argument("--chunk-id", type=int, default=0, help="Index of the PMT chunk to process (0,1,2,...)")
 parser.add_argument("--chunk-size", type=int, default=100, help="Number of PMTs per job")
 args = parser.parse_args()
@@ -15,11 +18,11 @@ chunk_id = args.chunk_id
 chunk_size = args.chunk_size
 
 # ----------------- DIRECTORIES -----------------
-signal_dir = "/scratch/elena/WCTE_DATA_ANALYSIS/waveform_npz/run2307/waveforms_including_position/run2306"
+signal_dir = "/scratch/elena/WCTE_DATA_ANALYSIS/waveform_npz/run2307/waveforms_including_position"
 
 signal_files = [
     f for f in os.listdir(signal_dir)
-    if f.endswith("_combined.npz")
+    if fnmatch.fnmatch(f, args.pattern)
 ]
 
 pmts_all = sorted([f.replace(".npz", "") for f in signal_files])

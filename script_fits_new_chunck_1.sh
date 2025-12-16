@@ -1,8 +1,8 @@
 #!/bin/bash
 #SBATCH --qos=regular
-#SBATCH --job-name=twoStepfit
-#SBATCH --output=twoStepfit_%A_%a.out
-#SBATCH --error=twoStepfit_%A_%a.err
+#SBATCH --job-name=all_2307
+#SBATCH --output=all_2307_%A_%a.out
+#SBATCH --error=all_2307_%A_%a.err
 #SBATCH --partition=general
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
@@ -17,5 +17,6 @@ source /scratch/elena/elena_wcsim/build/env_wcsim.sh
 
 #----------------- RUN PYTHON SCRIPT -----------------
 python3 /scratch/elena/WCTE_DATA_ANALYSIS/WCTE_MC-Data_Validation_with_GAIN_Calibration/NEW_script_fits_chunck_1.py \
+    --pattern "*merge.npz" \
     --chunk-id ${SLURM_ARRAY_TASK_ID} \
     --chunk-size 100
