@@ -1,0 +1,13 @@
+# Python caches & editor backups
+__pycache__/
+*.pyc
+*.swp
+*.sh~
+
+# Jupyter temp files
+.ipynb_checkpoints/
+
+# Datos generados
+*.npz
+root_files/
+
